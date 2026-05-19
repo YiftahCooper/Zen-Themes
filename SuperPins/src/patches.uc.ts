@@ -72,6 +72,7 @@ class OrientListener extends MutationListener {
   pref = "uc.pins.auto-grow";
 
   constructor(prefListeners: Record<string, () => void>) {
+    // spread operator is not fast, alternative?
     super(
       { attributes: true, translate: true },
       ...document.querySelectorAll<HTMLElement>(
