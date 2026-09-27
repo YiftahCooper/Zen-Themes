@@ -1,69 +1,70 @@
-# Tall pinned-folder scrolling repair
+# Ordinary tabs disappearing below a large pinned folder
 
-## Reproduction
+With **Keep pinned tabs at the top when scrolling** enabled, expanding a large
+pinned folder could make the ordinary tabs below it impossible to reach.
+Collapsing the folder brought them back. The tabs were still there; their
+section had been squeezed to zero height.
 
-On Zen 1.22.3b (Gecko 156.0.1), enable SuperPins 1.7.2's **Keep pinned tabs at
-the top when scrolling** option. Create a pinned folder with enough tabs to
-exceed the sidebar height and several ordinary tabs outside it. Expand the
-folder and scroll. The ordinary section can have a zero-height viewport while
-its tabs still exist; collapsing the folder restores it.
+These screenshots show the same disposable profile and the same 700 × 900
+window, scrolled to the bottom of Sports. Only SuperPins is loaded. All 78 tabs
+are present in both captures.
 
-Use a window with room for Essentials and the tab sections. An Essentials grid
-that itself exceeds the available window height is a separate case.
+| SuperPins 1.7.2                                                                                  | With this fix                                                                                                  |
+| ------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------- |
+| ![Sports is expanded, but there is no ordinary-tab area below it](images/tall-folder-before.png) | ![Sports stays expanded and an ordinary tab is visible below the New Tab button](images/tall-folder-after.png) |
 
-The native-only fixture did not reproduce this failure. SuperPins' stay-at-top
-rules and Even Better New Tab Button 1.0.3's sticky rules each reproduced it
-independently. When both are installed, both need the correction: disabling or
-fixing only one can leave the other mod's sizing problem active.
+The ordinary section measures **0 px before** and **80 px after** at this tab
+density. Each section can be scrolled to its last tab. For comparison, here is
+[the original version with Sports collapsed](images/tall-folder-collapsed.png),
+where the ordinary tabs are visible again.
 
-## Repair
+## What changed
 
-- Let pinned content keep its natural height when short, shrink when tall, and
-  scroll independently. Reserve two native row pitches for the ordinary section
-  so the New Tab row cannot consume its entire viewport.
-- Set the native arrowscrollbox's shadow `items-wrapper` minimum height to zero
-  through an author-origin `::part` rule. In the tested Gecko build, adding that
-  rule only to the mod's user-origin stylesheet did not fix the shadow slot.
-- Reveal the selected or focused tab after native selection, focus and resize.
-  Zen's outer-scroller overflow check does not cover these separate scrollers.
-- Continue native drag edge-scrolling in the pinned section. Native selection,
-  grouping and drop handlers remain in charge of the actual operation.
-- Share one set of input listeners with other owners of the same repair. Sine
-  unload removes this mod's style and ownership; the final owner removes the
-  listeners and pending animation frames.
+Short pinned sections keep their natural height. When a folder gets too tall,
+the pinned section can shrink and scroll, leaving room for the New Tab row and
+an ordinary tab below it. The minimum uses Zen's tab dimensions rather than a
+fixed share of the sidebar.
 
-The module changes no preferences, tab titles, folders or saved session data.
-Existing SuperPins options, scrollbar hiding and the orientation script remain
-in place. Both the CSS and input support are gated by vertical tabs and the
-stay-at-top preference. The complete repair requires Sine JavaScript support;
-copying the CSS alone is insufficient.
+CSS alone was not enough in the tested Gecko build. The native arrowscrollbox
+has a shadow slot whose minimum height also needs to shrink. A small Sine
+module applies that rule at author origin, keeps keyboard-selected and focused
+tabs visible, and supports drag scrolling at the pinned section's edges. Zen
+still handles selection, grouping and dropping. The module shares its input
+listeners with the corresponding New Tab Button repair and removes them when
+the last mod using them unloads.
 
-## Verification and limits
+The existing SuperPins settings and orientation script are preserved. The fix
+also respects scrollbar hiding and handles legacy grid layout's important
+overflow rule. It changes no saved tabs, titles, folders or preferences. Both
+the stylesheet and the script are needed, so Sine must be allowed to run the
+included JavaScript.
 
-The repair candidate was exercised in native Zen/Gecko before packaging here:
+## Testing
 
-- 24 layout cases: SuperPins alone, corrected New Tab Button alone and both
-  stylesheet orders, at three window heights, with expanded/collapsed sidebar.
-- A further native Gecko check of the packaged module with legacy pinned grid
-  layout enabled and at least three direct pinned children. The legacy rule's
-  important visible overflow initially prevented wheel scrolling in the pinned
-  section. Making the stay-at-top vertical overflow important restored scrolling
-  (0 to 292 px), kept the ordinary viewport at 80 px, and left the first and last
-  tabs in both sections reachable.
-- Sine unload/reload, preference gates, workspace changes and cold-start module
-  registration; scrollbar-hiding preference checked separately.
-- Visible-window wheel scrolling, native New Tab actions and keyboard reveal.
-  Manual native drags reordered tabs in both sections and reached both last
-  tabs. An automated pointer harness did not deliver native drop events even
-  in its control, so those attempts are not counted as successful drag tests.
-- A temporary everyday-profile trial restored the ordinary viewport from zero
-  to 80 px at the tested density while preserving all 61 tab identities and
-  checked folder/preference state. The user confirmed reachability and correct
-  expand/collapse behavior. Undo was separately verified in the disposable
-  profile. This was an in-memory trial, not a permanent profile installation.
+The original failure reproduced on **Zen 1.22.3b / Gecko 156.0.1**. The repair
+was checked with SuperPins alone, the corrected New Tab Button alone, and both
+stylesheet orders, across three window heights and both sidebar modes: 24
+layout cases. Sine unload/reload, preference changes, workspace changes,
+cold-start loading and scrollbar hiding were checked separately.
 
-This contribution ports that candidate to TypeScript and the repository's Bun
-build. To check its generated module without launching a browser:
+Visible-window checks covered wheel scrolling, New Tab actions and keyboard
+navigation. Manual drags successfully reordered tabs in both sections, and
+both last tabs could be reached. The automated pointer test did not produce
+native drop events even without the mods, so it is not counted as a passing
+drag test.
+
+A temporary trial in the everyday profile also restored access to the ordinary
+tabs. All 61 tab identities and the checked folder/preference state were
+preserved, and the user confirmed the behavior was correct. That was an
+in-memory trial; the published package has not been permanently installed there.
+
+The generated package was then checked in the disposable profile for the
+screenshots above. A separate legacy-grid check caught an overflow conflict:
+before correcting it, wheel input did not scroll the pinned section; afterward
+it scrolled by 292 px, while the ordinary section kept its 80 px viewport. The
+first and last tabs in both sections remained reachable.
+
+To build the module and run its input/lifecycle tests:
 
 ```sh
 bun install --frozen-lockfile
@@ -71,20 +72,22 @@ bun run build
 node --test test-superpins.mjs
 ```
 
-The Node tests cover packaging, reveal behavior, preference changes during
-pending work, continuous drag scrolling, cleanup and shared-owner lifetime.
-They do not emulate Gecko layout or replace the native checks above. The final
-generated package has not been permanently installed in the everyday profile.
+The Bun 1.3.12 build, all 12 Node tests, ESLint, the changed CSS's Stylelint
+check, formatting checks and the new module's strict TypeScript check pass.
+Repository-wide `tsc --noEmit` still reports three existing errors in
+`scripts/build.ts`, where `entry.split(sep)[0]` can be undefined. The build script
+is unchanged. The Node tests check module behavior; they do not simulate Gecko
+layout.
 
-At the upstream base, `tsc --noEmit` reports three existing errors in
-`scripts/build.ts` because `entry.split(sep)[0]` can be `undefined`. The Bun build
-works. This repair does not change that unrelated build script.
+Two limits matter here. An Essentials grid that is taller than the available
+window is a separate problem. Also, Even Better New Tab Button 1.0.3's sticky
+rules can cause the same collapse independently, so that mod needs its own fix
+when both are installed. The native-only fixture did not reproduce this defect.
 
-## Adoption and rollback
+## Using the fork and rolling back
 
-The original mod identity and preferences are retained. A fork install must
-replace the existing SuperPins package, not run a second copy alongside it.
-Keep the prior package and registry entry before switching its source. Restore
-that package and source entry to roll back; tabs and preferences need no
-migration. Sine's unload hook removes the new runtime effects, and restarting
-also clears them. Other installed mods may still require their own correction.
+The mod keeps its existing identity and preferences. Replace the existing
+SuperPins package when switching to the fork; do not install a second copy.
+Keep the old package and its Sine source entry so they can be restored together.
+Tabs and preferences need no migration. Unloading the mod removes its runtime
+changes, and restarting also clears them.
