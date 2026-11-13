@@ -4,12 +4,15 @@ This mod elevates your experience with pinned tabs and Essentials by making some
 
 ![image](https://raw.githubusercontent.com/CosmoCreeper/Zen-Themes/refs/heads/main/SuperPins/image.png)
 
-**Latest Version:** 1.7.3
+**Latest Version:** 1.7.4
 
 The stay-at-top scrolling repair keeps ordinary tabs reachable when an expanded
 pinned folder is taller than the sidebar. It requires Sine's JavaScript support
 as well as the stylesheet; existing settings are preserved. See
 [the reproduction, verification and rollback notes](SCROLLING-VERIFICATION.md).
+Since 1.7.4, dragging tabs to the top of the ordinary list (or over the New Tab
+row above it) scrolls the list up, so tabs can be moved upward past what is
+visible.
 
 ## Features (toggle in mod settings):
 

@@ -79,6 +79,27 @@ Repository-wide `tsc --noEmit` still reports three existing errors in
 is unchanged. The Node tests check module behavior; they do not simulate Gecko
 layout.
 
+### 1.7.4: dragging tabs upward in the ordinary list
+
+Zen only auto-scrolls a drag over its hidden scroll buttons, so dragging tabs
+upward stopped at the top of the visible ordinary list; the pointer then
+reached the pinned/folder area. Version 1.7.4 also edge-scrolls the ordinary
+list: its top and bottom 48 px strips, plus the New Tab row just above it,
+scroll it while tabs are dragged. Dropping stays native. Each mod ships the
+shared code, and a newer copy takes over an older one.
+
+In disposable headless **Zen 1.24.1b / Gecko 159.0.1** with 80 tabs and the
+list scrolled to 1500 px, 600 ms of synthetic `dragover` scrolled the list:
+
+| Mods loaded                     | Middle | Top edge | 40 px in | New Tab row |
+| ------------------------------- | ------ | -------- | -------- | ----------- |
+| SuperPins 1.7.3 + New Tab 1.0.5 | 0      | 0        | 0        | 0           |
+| SuperPins 1.7.4 + New Tab 1.0.6 | 0      | 922      | 176      | 992         |
+| SuperPins 1.7.3 + New Tab 1.0.6 | 0      | 929      | 176      | 970         |
+| SuperPins 1.7.4 + New Tab 1.0.5 | 0      | 918      | 174      | 985         |
+
+All 15 Node tests pass. The feel of a real mouse drag has not been measured.
+
 Two limits matter here. An Essentials grid that is taller than the available
 window is a separate problem. Also, Even Better New Tab Button 1.0.3's sticky
 rules can cause the same collapse independently, so that mod needs its own fix

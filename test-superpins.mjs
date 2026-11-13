@@ -18,6 +18,7 @@ function fixture() {
   const unloads = [];
   const media = { matches: true };
   let frameId = 0;
+  let queried = null;
   const pane = {
     isConnected: true,
     scrollTop: 0,
@@ -65,6 +66,7 @@ function fixture() {
         },
       }),
       documentElement: { appendChild: (style) => styles.add(style) },
+      querySelector: () => queried,
     },
     gBrowser: { selectedTab: tab },
     requestAnimationFrame: (fn) => {
@@ -102,6 +104,9 @@ function fixture() {
     fire,
     frame,
     drag,
+    setQuery: (element) => {
+      queried = element;
+    },
   };
 }
 
@@ -227,4 +232,102 @@ test("another mod owner keeps shared input handlers alive after SuperPins unload
   shared.release(other);
   assert.equal(f.win.__zenSectionScrollRepair, undefined);
   for (const listeners of f.events.values()) assert.equal(listeners.size, 0);
+});
+
+// Version 2: the ordinary list also scrolls while dragging at its edges, and a
+// drag just above it (the New Tab row) scrolls it up, so tabs can move upwards.
+function normalFixture({ scrollTop = 400 } = {}) {
+  const f = fixture();
+  const normal = {
+    isConnected: true,
+    scrollTop,
+    scrollHeight: 4000,
+    clientHeight: 300,
+    getBoundingClientRect: () => ({
+      left: 0,
+      right: 200,
+      top: 258,
+      bottom: 558,
+      height: 300,
+    }),
+  };
+  f.load();
+  // Point the module's document lookups at this list.
+  const inside = {
+    closest: (selector) =>
+      selector.includes("normal-tabs-section") ? normal : null,
+  };
+  const above = { closest: () => null };
+  f.setQuery(normal);
+  const at = (y) =>
+    f.fire("dragover", {
+      target: y < 258 ? above : inside,
+      dataTransfer: { types: ["application/x-moz-tabbrowser-tab"] },
+      clientX: 100,
+      clientY: y,
+    });
+  return { ...f, normal, at };
+}
+
+test("ordinary list scrolls at its edges, faster nearer the edge", () => {
+  const f = normalFixture();
+  f.at(300);
+  f.frame();
+  const slow = 400 - f.normal.scrollTop;
+  f.normal.scrollTop = 400;
+  f.at(259);
+  f.frame(32);
+  const fast = 400 - f.normal.scrollTop;
+  assert.ok(slow > 0 && fast > slow * 4, `slow ${slow}, fast ${fast}`);
+  f.at(400);
+  assert.equal(f.frames.size, 0);
+  f.normal.scrollTop = 400;
+  f.at(556);
+  f.frame(48);
+  assert.ok(f.normal.scrollTop > 400);
+});
+
+test("the row just above the list scrolls it up and stops at the top", () => {
+  const f = normalFixture({ scrollTop: 30 });
+  f.at(240);
+  f.frame();
+  assert.ok(f.normal.scrollTop < 30);
+  f.normal.scrollTop = 0;
+  f.frame(32);
+  assert.equal(f.frames.size, 0);
+  f.at(240);
+  assert.equal(f.frames.size, 0);
+  f.normal.scrollTop = 30;
+  f.at(150);
+  assert.equal(f.frames.size, 0);
+});
+
+test("a version 2 copy takes over an older shared copy and keeps both owners", () => {
+  const f = fixture();
+  const oldOwners = new Map([[{}, { matches: true }]]);
+  let oldListening = true;
+  const old = {
+    owners: oldOwners,
+    release(owner) {
+      oldOwners.delete(owner);
+      if (!oldOwners.size) {
+        oldListening = false;
+        if (f.win.__zenSectionScrollRepair === old)
+          delete f.win.__zenSectionScrollRepair;
+      }
+    },
+  };
+  const [oldOwner] = oldOwners.keys();
+  f.win.__zenSectionScrollRepair = old;
+  f.load();
+  const shared = f.win.__zenSectionScrollRepair;
+  assert.notEqual(shared, old);
+  assert.equal(shared.version, 2);
+  assert.equal(oldListening, false);
+  assert.equal(shared.owners.size, 2);
+  old.release(oldOwner);
+  assert.equal(shared.owners.size, 1);
+  f.unloads.at(-1)();
+  for (const listeners of f.events.values()) assert.equal(listeners.size, 0);
+  assert.equal(f.win.__zenSectionScrollRepair, undefined);
 });
